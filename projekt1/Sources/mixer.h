@@ -8,9 +8,9 @@
 #ifndef SOURCES_MIXER_H_
 #define SOURCES_MIXER_H_
 
-//inicializace mísící jednotky
+//inicializace mï¿½sï¿½cï¿½ jednotky
 void init(void);
-
+//state nahradit int za bool
 void MIXER_NastavVentil(int ventil, int state);
 
 void MIXER_NastavMichadlo(int state);
