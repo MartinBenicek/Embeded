@@ -9,7 +9,7 @@
 
 
 //Switch_pin 22 = D0
-#define SWITCH_PIN 0
+#define MIX_PIN 0
 //SV1_PIN 11 = E5
 #define SV1_PIN 5
 //SV2_PIN 12 = C1
@@ -20,6 +20,7 @@
 #define SV4_PIN 0
 //SV5_PIN 16 = E1
 #define SV5_PIN 1
+
 //H1 24 = D3
 #define H1_PIN 3
 //H2 28 = C16
@@ -44,7 +45,7 @@ void init(void)
 	SIM->SCGC5 |= (SIM_SCGC5_PORTA_MASK | SIM_SCGC5_PORTB_MASK |
 			SIM_SCGC5_PORTC_MASK | SIM_SCGC5_PORTD_MASK | SIM_SCGC5_PORTE_MASK );
 	// Set pin function to GPIO
-	PORTD->PCR[SWITCH_PIN] = PORT_PCR_MUX(1);
+	PORTD->PCR[MIX_PIN] = PORT_PCR_MUX(1);
 
 	PORTE->PCR[SV1_PIN] = PORT_PCR_MUX(1);
 	PORTC->PCR[SV2_PIN] = PORT_PCR_MUX(1);
@@ -64,7 +65,7 @@ void init(void)
 	// Set pin direction
 
 	//Switch is output
-	PTD->PDDR |= (1 << SWITCH_PIN);
+	PTD->PDDR |= (1 << MIX_PIN);
 
 	// SV1-SV5 is output
 	PTE->PDDR |= (1 << SV1_PIN);
@@ -84,15 +85,15 @@ void init(void)
 	PTC->PDDR &= ~(1 << H8_PIN);
 }
 
-void MIXER_NastavVentil(ventil, state){
+void MIXER_NastavVentil(ventil, state, c){
 	if (state == 1){
-		if(ventil == 1){
-				PTC->PSOR |= (1 << ventil);
-				return;
-			}
+		if(c == 1){
+			PTC->PSOR |= (1 << ventil);
+			return;
+		}
 		PTE->PSOR |= (1 << ventil);
 	} else{
-		if(ventil == 1){
+		if(c == 1){
 			PTC->PCOR |= (1 << ventil);
 			return;
 		}
@@ -101,8 +102,41 @@ void MIXER_NastavVentil(ventil, state){
 	}
 }
 
-void MIXER_SledovatHladinu(int sensor){
-	PTE->PSOR |= (1 << (uint8_t)sensor);  /* set pin to HIGH  */
-	PTE->PCOR |= (1 << (uint8_t)sensor);  /* clear pin (set LOW)  */
+int MIXER_SledovatHladinu(int sensor, int c){
+	uint8_t thisPin;
+	thisPin = sensor;
+	if(c == 1){
+		if((PTC->PDIR & (1 << (uint8_t)thisPin)) == 0){
+			return 0;
+		} else {
+			return 1;
+		}
+	} else{
+		if((PTD->PDIR & (1 << (uint8_t)thisPin)) == 0){
+			return 0;
+		} else {
+			return 1;
+		}
+	}
 }
 
+void MIXER_NastavMichadlo(int state){
+	if(state){
+		PTD->PSOR = PTD->PSOR |(1 << MIX_PIN);
+	} else{
+		PTD->PCOR = PTD->PCOR |(1 << MIX_PIN);
+	}
+}
+
+void MIXER_storno(){
+
+}
+
+
+static inline int IsKeyPressed(int pin)
+{
+	if ((PTA->PDIR & (1 << pin)) == 0)
+		return 1;
+	else
+		return 0;
+}
