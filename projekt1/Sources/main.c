@@ -31,56 +31,60 @@
 #include "MKL25Z4.h"
 #include "mixer.h"
 #include "drv_systick.h"
+#include "drv_lcd.h"
 
-//Switch_pin 22 = D0
-#define MIX_PIN 0
-//SV1_PIN 11 = E5
-#define SV1_PIN 5
-//SV2_PIN 12 = C1
-#define SV2_PIN 1
-//SV3_PIN 13 = E4
-#define SV3_PIN 4
-//SV4_PIN 15 = E0
-#define SV4_PIN 0
-//SV5_PIN 16 = E1
-#define SV5_PIN 1
-//H1 24 = D3
-#define H1_PIN 3
-//H2 28 = C16
-#define H2_PIN 16
-//H3 23 = D2
-#define H3_PIN 2
-//H4 34 = C5
-#define H4_PIN 5
-//H5 26 = D4
-#define H5_PIN 4
-//H6 36 = C7
-#define H6_PIN 7
-//H7 25 = D5
-#define H7_PIN 5
-//H8 33 = C6
-#define H8_PIN 6
-#define		SW1		(4)
-#define		SW2		(5)
-#define		SW3		(6)
-#define		SW4		(7)
+#define MIX_PIN	0	// Switch_pin 22 = D0	- Spusteni mixeru
+#define SV1_PIN	5	// SV1_PIN 11 = E5		- Ventil plneni tanku 1
+#define SV2_PIN	1	// SV2_PIN 12 = C1		- Ventil plneni tanku 2
+#define SV3_PIN	4	// SV3_PIN 13 = E4		- Ventil plneni tanku 3
+#define SV4_PIN	0	// SV4_PIN 15 = E0		- Ventil plneni mixeru
+#define SV5_PIN	1	// SV5_PIN 16 = E1		- Ventil vypousteni mixeru
 
-static int i = 0;
+#define H1_PIN 	3	// H1 24 = D3			- Hladinomer 3/3 nadrze (Tank 1)
+#define H2_PIN 	16	// H2 28 = C16			- Hladinomer 2/3 nadrze (Tank 1)
+#define H3_PIN 	2	// H3 23 = D2			- Hladinomer 1/3 nadrze (Tank 1)
+#define H4_PIN 	5	// H4 34 = C5			- Hladinomer 2/2 nadrze (Tank 2)
+#define H5_PIN 	4	// H5 26 = D4			- Hladinomer 1/2 nadrze (Tank 2)
+#define H6_PIN 	7	// H6 36 = C7			- Hladinomer 3/3 nadrze (Tank 3)
+#define H7_PIN 	5	// H7 25 = D5			- Hladinomer 2/3 nadrze (Tank 3)
+#define H8_PIN 	6	// H8 33 = C6			- Hladinomer 1/3 nadrze (Tank 3)
 
-void delay(void);
+
+
+
+// Definice tlacitek
+#define		SW1		(4)	// Strední
+#define		SW2		(5)	// Bílá
+#define		SW3		(6)	// Silná	
+#define		SW4		(7)	// Storno (Ukonceni programu)
+
+// Definice naplneni nadrzi
+int tank1;
+int tank2;
+int tank3;
+
 
 
 typedef enum Stavy_Mixeru{
-	start,
-	plneni1,
-	plneni2,
-	plneni3,
-	plneniMixeru,
-	vypousteni1,
-	vyposteni2,
-	vypousteni3,
-	vypousteniMixeru
+	stav_cekani,
+	stav_plneni1, 			// plneni tanku 1
+	stav_plneni2, 			// plneni tanku 2
+	stav_plneni3, 			// plneni tanku 3
+	stav_plneniMixeru,		// plneni mixeru (Vypusteni všech tanku)
+	stav_mixovani,			// mixovani
+	stav_vypousteniMixeru,	// vypousteni mixeru
+	stav_hotovo,			// hotovo
+	stav_storno				// ukon?ení programu
 } aktualniStav;
+
+// Vychozi stav mixeru
+aktualniStav stav = stav_cekani;
+
+
+// Prototypy funkci
+void handleButtons();
+void handleMixerState(void);
+void updateLCD(void);
 
 
 int main(void)
@@ -89,85 +93,212 @@ int main(void)
     /* Write your code here */
 	init();
 	SYSTICK_initialize();
+	LCD_initialize();
 
-	aktualniStav stav = start;
+	// Nastaveni vychoziho stavu ventilu
+	MIXER_NastavVentil(SV1_PIN, 0);
+	MIXER_NastavVentil(SV2_PIN, 0);
+	MIXER_NastavVentil(SV3_PIN, 0);
+	MIXER_NastavVentil(SV4_PIN, 0);
+	MIXER_NastavVentil(SV5_PIN, 0);
 
-	MIXER_NastavVentil(SV1_PIN, 0, 0);
-	MIXER_NastavVentil(SV2_PIN, 0, 1);
-	MIXER_NastavVentil(SV3_PIN, 0, 0);
-	MIXER_NastavVentil(SV4_PIN, 0, 0);
-	MIXER_NastavVentil(SV5_PIN, 0, 0);
-
-	int tank1;
-	int tank2;
-	int tank3;
 
     /* This for loop should be replaced. By default this loop allows a single stepping. */
     while(1){
-/*
-    	if(MIXER_SledovatHladinu(H3_PIN, 0) == 0){
-    		MIXER_NastavVentil(SV1_PIN, 1, 0);
-    		MIXER_NastavVentil(SV4_PIN, 0, 0);
-    		MIXER_NastavVentil(SV5_PIN, 0, 0);
-    	}
-
-    	if(MIXER_SledovatHladinu(H1_PIN, 0) == 1){
-    		MIXER_NastavVentil(SV1_PIN, 0, 0);
-    		MIXER_NastavVentil(SV4_PIN, 1, 0);
-    		SYSTICK_delay_ms(2000);
-    		MIXER_NastavVentil(SV4_PIN, 0, 0);
-    		MIXER_NastavMichadlo(1);
-    		SYSTICK_delay_ms(3000);
-    		MIXER_NastavMichadlo(0);
-    		MIXER_NastavVentil(SV5_PIN, 1, 0);
-    		SYSTICK_delay_ms(2000);
-    	}
-
-
-		if ( IsKeyPressed(OFF_PIN) )
-
-    	*/
-    	/*
-    	sw1 støední H2, H5, H7
-
-    	sw2 bílá H3, H4, H8
-
-    	sw3 silná H1, H5, H6
-    	*/
-    	if ( IsKeyPressed(SW1) ){
-			tank1 = H2_PIN;
-			tank2 = H5_PIN;
-			tank3 = H7_PIN;
-    	} else if(IsKeyPressed(SW2)){}
-
-
-
-
-
-			switch(stav){
-				case start:
-					MIXER_NastavVentil(SV1_PIN, 0, 0);
-					MIXER_NastavVentil(SV2_PIN, 0, 1);
-					MIXER_NastavVentil(SV3_PIN, 0, 0);
-					stav = plneni1;
-					break;
-				case plneni1:
-				case plneni2:
-				case plneni3:
-					if(MIXER_SledovatHladinu(tank1, 0) == 1)
-					break;
-			}
-
+		handleButtons();
+		updateLCD();
+		handleMixerState();
     }
     /* Never leave main */
     return 0;
 }
 
-void delay(void)
-{
-	uint32_t n = 100000;
-	while( n -- )
-		;
+void handleButtons(){
+
+	if ( IsKeyPressed(SW1) && stav == stav_cekani){			// Nastaveni na Stredni kavu
+		tank1 = H2_PIN;
+		tank2 = H5_PIN;
+		tank3 = H7_PIN;
+		stav = stav_plneni1;
+	} else if(IsKeyPressed(SW2) && stav == stav_cekani){	// Nastaveni na Bílou kavu
+		tank1 = H3_PIN;
+		tank2 = H4_PIN;
+		tank3 = H8_PIN;
+		stav = stav_plneni1;
+	} else if(IsKeyPressed(SW3) && stav == stav_cekani){	// Nastaveni na Silnou kavu
+		tank1 = H1_PIN;
+		tank2 = H5_PIN;
+		tank3 = H6_PIN;
+		stav = stav_plneni1;
+	} else if(IsKeyPressed(SW4)){	// Storno
+		stav = stav_storno;
+	}
+}
+
+void handleMixerState(void){
+	static int probihaMichani = 0;
+
+	switch (stav) {
+		case stav_plneni1:
+			MIXER_NastavVentil(SV1_PIN, 1);
+			if (MIXER_SledovatHladinu(tank1) == 1) {
+				MIXER_NastavVentil(SV1_PIN, 0);
+				stav = stav_plneni2;
+			}
+			break;
+
+		case stav_plneni2:
+			MIXER_NastavVentil(SV2_PIN, 1);
+			if (MIXER_SledovatHladinu(tank2) == 1) {
+				MIXER_NastavVentil(SV2_PIN, 0);
+				stav = stav_plneni3;
+			}
+			break;
+
+		case stav_plneni3:
+			MIXER_NastavVentil(SV3_PIN, 1);
+			if (MIXER_SledovatHladinu(tank3) == 1) {
+				MIXER_NastavVentil(SV3_PIN, 0);
+				stav = stav_plneniMixeru;
+			}
+			break;
+
+		case stav_plneniMixeru:
+			MIXER_NastavVentil(SV4_PIN, 1);
+			if (MIXER_SledovatHladinu(tank1) == 1 &&
+				MIXER_SledovatHladinu(tank2) == 1 && 
+				MIXER_SledovatHladinu(tank3) == 1) {
+				SYSTICK_delay_ms(1000); // Cekani na stabilizaci hladin
+				MIXER_NastavVentil(SV4_PIN, 0); // Zavreni ventilu
+				probihaMichani = 0;
+				stav = stav_mixovani;
+			}
+			break;
+
+		case stav_mixovani:
+			MIXER_NastavMichadlo(1);
+			if(!probihaMichani){
+				SYSTICK_delay_ms(5000);		// Michani po dobu 5s -tohle by se dala menit pomoci potenciometru
+				probihaMichani = 1;	
+			}
+			if (probihaMichani){ 			// Pokud michani probehlo
+				MIXER_NastavMichadlo(0);	// Vypnuti michacku
+				stav = stav_vypousteniMixeru;
+			}
+			break;
+
+		case stav_vypousteniMixeru:
+			MIXER_NastavVentil(SV5_PIN, 1);
+			if (MIXER_SledovatHladinu(H4_PIN) == 1) {
+				MIXER_NastavVentil(SV5_PIN, 0);
+				stav = stav_hotovo;
+			}
+			break;
+
+		case stav_hotovo:
+			SYSTICK_delay_ms(3000);
+			stav = stav_cekani;
+			break;
+
+		case stav_storno:
+			MIXER_NastavVentil(SV1_PIN, 0);
+			MIXER_NastavVentil(SV2_PIN, 0);
+			MIXER_NastavVentil(SV3_PIN, 0);
+			MIXER_NastavVentil(SV4_PIN, 0);
+			MIXER_NastavVentil(SV5_PIN, 0);
+			MIXER_NastavMichadlo(0);
+			SYSTICK_delay_ms(3000);
+			stav = stav_cekani;
+			break;
+		case stav_cekani:
+		default:
+			break;
+	}
+}
+
+void updateLCD(void) {
+	LCD_clear();
+	switch (stav){
+		case stav_plneni1:
+			LCD_set_cursor(1,1);
+			LCD_puts("Plneni prvniho tanku");
+			LCD_set_cursor(2,1);
+			LCD_puts("Kavu jste zvolili:");
+			LCD_set_cursor(3,1);
+			if (tank1 == H1_PIN) {
+				LCD_puts("Velkou");
+			} else if (tank1 == H2_PIN) {
+				LCD_puts("Stredni");
+			} else if (tank1 == H3_PIN) {
+				LCD_puts("Malou");
+			}
+			break;
+
+		case stav_plneni2:
+			LCD_set_cursor(1,1);
+			LCD_puts("Plneni druheho tanku");
+			LCD_set_cursor(2,1);
+			LCD_puts("Mnozstvi mleka jse zvolili:");
+			LCD_set_cursor(3,1);
+			if (tank2 == H4_PIN) {
+				LCD_puts("Hodne");
+			} else if (tank2 == H5_PIN) {
+				LCD_puts("Malo");
+			}
+			break;
+		
+		case stav_plneni3:
+			LCD_set_cursor(1,1);
+			LCD_puts("Plneni tretiho tanku");
+			LCD_set_cursor(2,1);
+			LCD_puts("Mnozstvi cukru jste zvolili:");
+			LCD_set_cursor(3,1);
+			if (tank3 == H6_PIN) {
+				LCD_puts("20g");
+			} else if (tank3 == H7_PIN) {
+				LCD_puts("10g");
+			} else if (tank3 == H8_PIN) {
+				LCD_puts("Zadne");
+			}
+			break;
+
+		case stav_plneniMixeru:
+			LCD_set_cursor(1,1);
+			LCD_puts("Plnim Mixer");
+			break;
+
+		case stav_mixovani:
+			LCD_set_cursor(1,1);
+			LCD_puts("Micham...");
+			break;
+
+		case stav_vypousteniMixeru:
+			LCD_set_cursor(1,1);
+			LCD_puts("Leju kavu do salku");
+			break;
+
+		case stav_hotovo:
+			LCD_set_cursor(1,1);
+			LCD_puts("Vasa kava je hotova");
+			break;
+
+		case stav_storno:
+			LCD_set_cursor(1,1);
+			LCD_puts("Stornujem...");
+			break;
+
+		case stav_cekani:
+		default:
+			LCD_set_cursor(1,1);
+			LCD_puts("Vyberte kavu:");
+			LCD_set_cursor(2,1);
+			LCD_puts("Stredni  Bila  Silna");
+			LCD_set_cursor(3,1);
+			LCD_puts("  SW1    SW2   SW3  ");
+			LCD_set_cursor(4,1);
+			LCD_puts("Storno: SW4");
+			break;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
