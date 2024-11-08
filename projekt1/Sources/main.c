@@ -31,6 +31,7 @@
 #include "MKL25Z4.h"
 #include "mixer.h"
 #include "drv_systick.h"
+#include "drv_gpio.h"
 #include "drv_lcd.h"
 
 #define MIX_PIN	0	// Switch_pin 22 = D0	- Spusteni mixeru
@@ -50,19 +51,10 @@
 #define H8_PIN 	6	// H8 33 = C6			- Hladinomer 1/3 nadrze (Tank 3)
 
 
-
-
-// Definice tlacitek
-#define		SW1		(4)	// Strední
-#define		SW2		(5)	// Bílá
-#define		SW3		(6)	// Silná	
-#define		SW4		(7)	// Storno (Ukonceni programu)
-
 // Definice naplneni nadrzi
 int tank1;
 int tank2;
 int tank3;
-
 
 
 typedef enum Stavy_Mixeru{
@@ -92,6 +84,7 @@ int main(void)
 
     /* Write your code here */
 	init();
+	GPIO_Initialize();
 	SYSTICK_initialize();
 	LCD_initialize();
 
@@ -140,75 +133,75 @@ void handleMixerState(void){
 
 	switch (stav) {
 		case stav_plneni1:
-			MIXER_NastavVentil(SV1_PIN, 1);
-			if (MIXER_SledovatHladinu(tank1) == 1) {
-				MIXER_NastavVentil(SV1_PIN, 0);
-				stav = stav_plneni2;
+			MIXER_NastavVentil(SV1_PIN, 1);				// Otevreni ventilu pro plneni tanku 1
+			if (MIXER_SledovatHladinu(tank1) == 1) {	// Pokud je hladina na senzoru
+				MIXER_NastavVentil(SV1_PIN, 0);			// Zavreni ventilu
+				stav = stav_plneni2;					// Prechod do stavu plneni tanku 2
 			}
 			break;
 
 		case stav_plneni2:
-			MIXER_NastavVentil(SV2_PIN, 1);
-			if (MIXER_SledovatHladinu(tank2) == 1) {
-				MIXER_NastavVentil(SV2_PIN, 0);
-				stav = stav_plneni3;
+			MIXER_NastavVentil(SV2_PIN, 1);				// Otevreni ventilu pro plneni tanku 2
+			if (MIXER_SledovatHladinu(tank2) == 1) {	// Pokud je hladina na senzoru
+				MIXER_NastavVentil(SV2_PIN, 0);			// Zavreni ventilu
+				stav = stav_plneni3;					// Prechod do stavu plneni tanku 3
 			}
 			break;
 
 		case stav_plneni3:
-			MIXER_NastavVentil(SV3_PIN, 1);
-			if (MIXER_SledovatHladinu(tank3) == 1) {
-				MIXER_NastavVentil(SV3_PIN, 0);
-				stav = stav_plneniMixeru;
+			MIXER_NastavVentil(SV3_PIN, 1);				// Otevreni ventilu pro plneni tanku 3
+			if (MIXER_SledovatHladinu(tank3) == 1) {	// Pokud je hladina na senzoru
+				MIXER_NastavVentil(SV3_PIN, 0);			// Zavreni ventilu
+				stav = stav_plneniMixeru;				// Prechod do stavu plneni mixeru
 			}
 			break;
 
 		case stav_plneniMixeru:
-			MIXER_NastavVentil(SV4_PIN, 1);
-			if (MIXER_SledovatHladinu(tank1) == 1 &&
-				MIXER_SledovatHladinu(tank2) == 1 && 
-				MIXER_SledovatHladinu(tank3) == 1) {
-				SYSTICK_delay_ms(1000); // Cekani na stabilizaci hladin
-				MIXER_NastavVentil(SV4_PIN, 0); // Zavreni ventilu
-				probihaMichani = 0;
-				stav = stav_mixovani;
+			MIXER_NastavVentil(SV4_PIN, 1);				// Otevreni ventilu pro plneni mixeru
+			if (MIXER_SledovatHladinu(H3_PIN) == 0 && 	// Pokud tank 1 je prazdny
+				MIXER_SledovatHladinu(H5_PIN) == 0 && 	// Pokud tank 2 je prazdny
+				MIXER_SledovatHladinu(H8_PIN) == 0) { 	// Pokud tank 3 je prazdny
+				SYSTICK_delay_ms(1000); 				// Cekani 1s 
+				MIXER_NastavVentil(SV4_PIN, 0); 		// Zavreni ventilu
+				probihaMichani = 0;						// Nastaveni promenne na 0
+				stav = stav_mixovani;					// Prechod do stavu mixovani
 			}
 			break;
 
 		case stav_mixovani:
-			MIXER_NastavMichadlo(1);
-			if(!probihaMichani){
-				SYSTICK_delay_ms(5000);		// Michani po dobu 5s -tohle by se dala menit pomoci potenciometru
+			MIXER_NastavMichadlo(1);					// Zapnuti michacky
+			if(!probihaMichani){						// Pokud michani nebylo spusteno
+				SYSTICK_delay_ms(5000);					// Michani po dobu 5s -tohle by se dala menit pomoci potenciometru
 				probihaMichani = 1;	
 			}
-			if (probihaMichani){ 			// Pokud michani probehlo
-				MIXER_NastavMichadlo(0);	// Vypnuti michacku
-				stav = stav_vypousteniMixeru;
+			if (probihaMichani){ 						// Pokud michani probehlo
+				MIXER_NastavMichadlo(0);				// Vypnuti michacku
+				stav = stav_vypousteniMixeru;			// Prechod do stavu vypousteni mixeru
 			}
 			break;
 
 		case stav_vypousteniMixeru:
-			MIXER_NastavVentil(SV5_PIN, 1);
-			if (MIXER_SledovatHladinu(H4_PIN) == 1) {
-				MIXER_NastavVentil(SV5_PIN, 0);
-				stav = stav_hotovo;
+			MIXER_NastavVentil(SV5_PIN, 1);				// Otevreni ventilu pro vypousteni mixeru
+			if (MIXER_SledovatHladinu(H4_PIN) == 1) {	// Pokud je hladina na senzoru
+				MIXER_NastavVentil(SV5_PIN, 0);			// Zavreni ventilu
+				stav = stav_hotovo;						// Prechod do stavu hotovo
 			}
 			break;
 
 		case stav_hotovo:
-			SYSTICK_delay_ms(3000);
-			stav = stav_cekani;
+			SYSTICK_delay_ms(3000);						// Cekani 3s
+			stav = stav_cekani;							// Prechod do stavu cekani
 			break;
 
 		case stav_storno:
-			MIXER_NastavVentil(SV1_PIN, 0);
+			MIXER_NastavVentil(SV1_PIN, 0);				// Zavreni vsech ventilu
 			MIXER_NastavVentil(SV2_PIN, 0);
 			MIXER_NastavVentil(SV3_PIN, 0);
 			MIXER_NastavVentil(SV4_PIN, 0);
 			MIXER_NastavVentil(SV5_PIN, 0);
-			MIXER_NastavMichadlo(0);
-			SYSTICK_delay_ms(3000);
-			stav = stav_cekani;
+			MIXER_NastavMichadlo(0);					// Vypnuti michacky
+			SYSTICK_delay_ms(3000);						// Cekani 3s
+			stav = stav_cekani;							// Prechod do stavu cekani
 			break;
 		case stav_cekani:
 		default:
@@ -216,6 +209,9 @@ void handleMixerState(void){
 	}
 }
 
+/**
+ * Funkce pro aktualizaci LCD
+ */
 void updateLCD(void) {
 	LCD_clear();
 	switch (stav){

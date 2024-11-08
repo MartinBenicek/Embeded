@@ -106,7 +106,6 @@ uint8_t MIXER_SledovatHladinu(uint8_t sensor_pin) {
     return value;
 }
 
-
 void MIXER_NastavMichadlo(uint8_t state){
 	if(state){
 		PTD->PSOR = PTD->PSOR |(1 << MIX_PIN);
