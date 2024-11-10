@@ -49,13 +49,15 @@
 #define H7_PIN 	5	// H7 25 = D5			- Hladinomer 2/3 nadrze (Tank 3)
 #define H8_PIN 	6	// H8 33 = C6			- Hladinomer 1/3 nadrze (Tank 3)
 
-
+void delay(void);
+void ADCInit(void);
+uint32_t ADCCalibrate(void);
 
 
 // Definice tlacitek
-#define		SW1		(4)	// Strední
-#define		SW2		(5)	// Bílá
-#define		SW3		(6)	// Silná	
+#define		SW1		(4)	// Strednï¿½
+#define		SW2		(5)	// Bï¿½lï¿½
+#define		SW3		(6)	// Silnï¿½	
 #define		SW4		(7)	// Storno (Ukonceni programu)
 
 // Definice naplneni nadrzi
@@ -70,11 +72,11 @@ typedef enum Stavy_Mixeru{
 	stav_plneni1, 			// plneni tanku 1
 	stav_plneni2, 			// plneni tanku 2
 	stav_plneni3, 			// plneni tanku 3
-	stav_plneniMixeru,		// plneni mixeru (Vypusteni všech tanku)
+	stav_plneniMixeru,		// plneni mixeru (Vypusteni vï¿½ech tanku)
 	stav_mixovani,			// mixovani
 	stav_vypousteniMixeru,	// vypousteni mixeru
 	stav_hotovo,			// hotovo
-	stav_storno				// ukon?ení programu
+	stav_storno				// ukon?enï¿½ programu
 } aktualniStav;
 
 // Vychozi stav mixeru
@@ -94,6 +96,12 @@ int main(void)
 	init();
 	SYSTICK_initialize();
 	LCD_initialize();
+	ADCInit();
+	ADCCalibrate();
+	ADCInit();
+	PORTC->PCR[2] = PORT_PCR_MUX(0);
+
+	
 
 	// Nastaveni vychoziho stavu ventilu
 	MIXER_NastavVentil(SV1_PIN, 0);
@@ -105,9 +113,14 @@ int main(void)
 
     /* This for loop should be replaced. By default this loop allows a single stepping. */
     while(1){
+		//po uint16 smazat
+		ADC0->SC1[0] = ADC_SC1_ADCH(11);
+		while ( (ADC0->SC1[0] & ADC_SC1_COCO_MASK) == 0 )
+			;
+		uint16_t vysledek = ADC0->R[0];
 		handleButtons();
-		updateLCD();
-		handleMixerState();
+		updateLCD(vysledek);
+		handleMixerState(vysledek);
     }
     /* Never leave main */
     return 0;
@@ -120,7 +133,7 @@ void handleButtons(){
 		tank2 = H5_PIN;
 		tank3 = H7_PIN;
 		stav = stav_plneni1;
-	} else if(IsKeyPressed(SW2) && stav == stav_cekani){	// Nastaveni na Bílou kavu
+	} else if(IsKeyPressed(SW2) && stav == stav_cekani){	// Nastaveni na Bï¿½lou kavu
 		tank1 = H3_PIN;
 		tank2 = H4_PIN;
 		tank3 = H8_PIN;
@@ -135,7 +148,7 @@ void handleButtons(){
 	}
 }
 
-void handleMixerState(void){
+void handleMixerState(vysledek){
 	static int probihaMichani = 0;
 
 	switch (stav) {
@@ -178,7 +191,19 @@ void handleMixerState(void){
 		case stav_mixovani:
 			MIXER_NastavMichadlo(1);
 			if(!probihaMichani){
-				SYSTICK_delay_ms(5000);		// Michani po dobu 5s -tohle by se dala menit pomoci potenciometru
+				int delay_ms;
+				if(vysledek < 203){
+					delay_ms = 2000;
+				} else if(vysledek > 203){
+					delay_ms = 3000;
+				} else if(vysledek > 407){
+					delay_ms = 4000;
+				} else if(vysledek > 611){
+					delay_ms = 5000;
+				} else if(vysledek > 815){
+					delay_ms = 6000;
+				}
+				SYSTICK_delay_ms(delay_ms);		// Michani po dobu 5s -tohle by se dala menit pomoci potenciometru
 				probihaMichani = 1;	
 			}
 			if (probihaMichani){ 			// Pokud michani probehlo
@@ -216,7 +241,7 @@ void handleMixerState(void){
 	}
 }
 
-void updateLCD(void) {
+void updateLCD(vysledek) {
 	LCD_clear();
 	switch (stav){
 		case stav_plneni1:
@@ -289,16 +314,113 @@ void updateLCD(void) {
 
 		case stav_cekani:
 		default:
+			int delay_ms;
+			if(vysledek < 203){
+				delay_ms = 2000;
+			} else if(vysledek > 203){
+				delay_ms = 3000;
+			} else if(vysledek > 407){
+				delay_ms = 4000;
+			} else if(vysledek > 611){
+				delay_ms = 5000;
+			} else if(vysledek > 815){
+				delay_ms = 6000;
+			}
+			delay_ms /= 1000;
 			LCD_set_cursor(1,1);
-			LCD_puts("Vyberte kavu:");
-			LCD_set_cursor(2,1);
 			LCD_puts("Stredni  Bila  Silna");
-			LCD_set_cursor(3,1);
+			LCD_set_cursor(2,1);
 			LCD_puts("  SW1    SW2   SW3  ");
-			LCD_set_cursor(4,1);
+			LCD_set_cursor(3,1);
 			LCD_puts("Storno: SW4");
+			LCD_set_cursor(4,1);
+			LCD_puts("Doba michani: ");
+			LCD_set_cursor(4,15);
+			LCD_puts(delay_ms);
+			LCD_set_cursor(4,16);
+			LCD_puts("s");
 			break;
 	}
+}
+
+void ADCInit(void)
+{
+	// Povolit hodinovy signal pro ADC
+	SIM->SCGC6 |= SIM_SCGC6_ADC0_MASK;
+
+	// Zakazeme preruseni, nastavime kanal 31 = A/D prevodnik vypnut, jinak by zapisem
+	// doslo ke spusteni prevodu
+	// Vybereme single-ended mode
+	ADC0->SC1[0] =  ADC_SC1_ADCH(31);
+
+	// Vyber hodinoveho signalu, preddelicky a rozliseni
+	// Clock pro ADC nastavime <= 4 MHz, coz je doporuceno pro kalibraci.
+	// Pri max. CPU frekvenci 48 MHz je bus clock 24 MHz, pri delicce = 8
+	// bude clock pro ADC 3 MHz
+	ADC0->CFG1 = ADC_CFG1_ADICLK(0)		/* ADICLK = 0 -> bus clock */
+		| ADC_CFG1_ADIV(3)				/* ADIV = 3 -> clock/8 */
+		| ADC_CFG1_MODE(2);				/* MODE = 2 -> rozliseni 10-bit */
+
+	// Do ostatnich registru zapiseme vychozi hodnoty:
+	// Vybereme sadu kanalu "a", vychozi nejdelsi cas prevodu (24 clocks)
+	ADC0->CFG2 = 0;
+
+	// Softwarove spousteni prevodu, vychozi reference
+	ADC0->SC2 = 0;
+
+	// Hardwarove prumerovani vypnuto
+	ADC0->SC3 = 0;	/* default values, no averaging */
+
+}
+
+uint32_t ADCCalibrate(void)
+{
+	 unsigned short cal_var;
+
+	  ADC0->SC2 &= ~ADC_SC2_ADTRG_MASK;	/* Enable Software Conversion Trigger for Calibration Process */
+	  ADC0->SC3 &= ( ~ADC_SC3_ADCO_MASK & ~ADC_SC3_AVGS_MASK );    /* set single conversion, clear avgs bitfield for next writing */
+
+	  ADC0->SC3 |= ( ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(32) ); /* turn averaging ON and set desired value */
+
+	  ADC0->SC3 |= ADC_SC3_CAL_MASK;      /* Start CAL */
+
+	  /* Wait calibration end */
+	  while ( (ADC0->SC1[0] & ADC_SC1_COCO_MASK) == 0 )
+		  ;
+
+	  /* Check for Calibration fail error and return */
+	  if ( (ADC0->SC3 & ADC_SC3_CALF_MASK) != 0 )
+		  return 1;
+
+	  // Calculate plus-side calibration
+	  cal_var = 0;
+	  cal_var =  ADC0->CLP0;
+	  cal_var += ADC0->CLP1;
+	  cal_var += ADC0->CLP2;
+	  cal_var += ADC0->CLP3;
+	  cal_var += ADC0->CLP4;
+	  cal_var += ADC0->CLPS;
+
+	  cal_var = cal_var/2;
+	  cal_var |= 0x8000; // Set MSB
+	  ADC0->PG = ADC_PG_PG(cal_var);
+
+	  // Calculate minus-side calibration
+	  cal_var = 0;
+	  cal_var =  ADC0->CLM0;
+	  cal_var += ADC0->CLM1;
+	  cal_var += ADC0->CLM2;
+	  cal_var += ADC0->CLM3;
+	  cal_var += ADC0->CLM4;
+	  cal_var += ADC0->CLMS;
+
+	  cal_var = cal_var/2;
+	  cal_var |= 0x8000; // Set MSB
+	  ADC0->MG = ADC_MG_MG(cal_var);
+
+	  ADC0->SC3 &= ~ADC_SC3_CAL_MASK;
+
+	  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
