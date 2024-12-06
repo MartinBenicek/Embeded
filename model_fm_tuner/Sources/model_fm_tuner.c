@@ -45,19 +45,25 @@
 
 /*************************************************************/
 //			FreeRTOS
-SemaphoreHandle_t G_Mutex = NULL;
-// Semafor pouzity pro synchronizaci
+SemaphoreHandle_t G_Mutex = NULL;				// Semafor pouzity pro synchronizaci
+
 
 /*************************************************************/
 //			Funkce
-uint32_t read_freq(void);
-void write_freq(uint32_t freq);
-void i2c_event(uint32_t event) { }
-void intToStr(int N, char *str);
-void delay(void);
-void switch_init(void);
-void TaskPrint(void * pvParameters);
+uint32_t read_freq(void);						// Cteni frekvence z tuneru
+void write_freq(uint32_t freq);					// Zapis frekvence do tuneru
+void i2c_event(uint32_t event) { }				// Obsluha udalosti I2C	
+void intToStr(int N, char *str);				// Prevod integeru na retezec
+void delay(void);								// Zpozdeni
+void switch_init(void);							// Inicializace tlacitek
+int switch_readw(int SW);						// Cteni stavu tlacitek
+void TaskPrint(void * pvParameters);			// Task pro vypis na LCD
+void TaskReadButtons (void* pvParameters);		// Task pro cteni tlacitek
 
+/*************************************************************/
+//			Definice
+#define SWITCH_PRESSED  	(1)					// Stisknuto
+#define SWITCH_NOT_PRESSED  (0)					// Nestisknuto
 
 /*************************************************************/
 //			Promenne
@@ -112,9 +118,9 @@ int main(void)
 
     status = xTaskCreate(TaskPrint, /* ukazatel na task */
         			"Vypis", /* jmeno tasku pro ladeni - kernel awareness debugging */
-        			configMINIMAL_STACK_SIZE, /* velikost zasobniku = task stack size */
+        			configMINIMAL_STACK_SIZE +100, /* velikost zasobniku = task stack size */
         			(void*)NULL, /* pripadny parametr pro task = optional task startup argument */
-        			tskIDLE_PRIORITY, /* priorita tasku */
+        			tskIDLE_PRIORITY + 1 , /* priorita tasku */
         			(xTaskHandle*)NULL /* pripadne handle na task, pokud ma byt vytvoreno */
         		);
 	if ( status != pdPASS)
@@ -164,15 +170,63 @@ void TaskPrint(void * pvParameters){
 	for ( ;; ) {
 
 		// Akce se provadi kazdych 600 ms
-		vTaskDelay(600 / portTICK_RATE_MS);
+		vTaskDelay(100 / portTICK_RATE_MS);
 
-		LCD_clear();
-		LCD_set_cursor(4,1);
-		LCD_puts("task");
-		freq = 917;		// 91.7 radio zlin
-		write_freq(freq);
+		if (update_LCD == 1) {		// pokud je potreba aktualizovat LCD
+			xSemaphoreTake(G_Mutex, portMAX_DELAY);
+			update_LCD = 0;			// zrusime pozadavek na aktualizaci
+			LCD_set_cursor(3,1);	// nastavime kurzor na 3. radek
+			print_radio(freq);		// vypiseme nazev stanice
+			LCD_set_cursor(4,1);	// nastavime kurzor na 4. radek
+			LCD_puts("FREKVENCE:");
+			LCD_set_cursor(4,11);	// nastavime kurzor na 4. radek a 10. sloupec
+			intToStr(freq, buf);	// prevedeme cislo na retezec
+			LCD_puts(buf);			// vypiseme na LCD
+			_write_freq(freq);		// zapiseme frekvenci do tuneru
+			vTaskDelay(100 / portTICK_RATE_MS);	// cekame 100 ms
+			xSemaphoreGive(G_Mutex);// uvolnime semafor
+		}
 
 		delay();
+	}
+}
+
+void print_radio(uint32_t freq) {
+	if (895 < freq && freq < 900) {		//  895
+		LCD_puts("Rock Radio       ");
+	}
+	else if (920 < freq && freq < 925) {		//  920
+		LCD_puts("Radio Zlin       ");
+	}
+	else if (941 < freq && freq < 945) {		//  943
+		LCD_puts("Radio Blanik     ");
+	}
+	else if (973 < freq && freq < 978) {		//  975
+		LCD_puts("Radio Zlin       ");
+	}
+	else
+		LCD_puts("                 ");
+}
+
+void TaskReadButtons (void* pvParameters){
+	for (;;){
+		if( switch_readw(SW1) == SWITCH_PRESSED ) {
+			freq = 895;		// 89.5 Rock Radio
+			update_LCD = 1;
+		}
+		if( switch_readw(SW2) == SWITCH_PRESSED ) {
+			freq = 917;		// 91.7 Radio Zlin
+			update_LCD = 1;
+		}
+		if( switch_readw(SW3) == SWITCH_PRESSED ) {
+			freq = 943;		// 94.3 Radio Blanik
+			update_LCD = 1;
+		}
+		if( switch_readw(SW4) == SWITCH_PRESSED ) {
+			freq = 975;		// 97.5 Radio Zlin
+			update_LCD = 1;
+		}
+
 	}
 }
 
@@ -220,6 +274,37 @@ void delay(void)
 		;
 }
 
+void switch_init(void)
+{
+	// Nastavit piny pro SW1-SW4 jako vstup s povolenym pull-up rezistorem
+	pinMode(SW1, INPUT_PULLUP);
+	pinMode(SW2, INPUT_PULLUP);
+	pinMode(SW3, INPUT_PULLUP);
+	pinMode(SW4, INPUT_PULLUP);
+}
+
+int switch_readw(int SW)
+{
+    int switch_state = SWITCH_NOT_PRESSED;
+    if ( pinRead(SW) == LOW )
+    {
+        // tlacitko je stisknuto
+
+        // debounce = wait
+        delay_debounce();
+
+        // znovu zkontrolovat stav tlacitka
+        if ( pinRead(SW) == LOW )
+        {
+        	// cekame na uvolneni tlacitka
+        	while( pinRead(SW) == LOW )
+        		;
+            switch_state = SWITCH_PRESSED;
+        }
+    }
+    // vratime stav tlacitka
+    return switch_state;
+}
 
 // Cte frekvenci nastavenou v obvodu FM tuneru
 // Vraci: frekvence * 10 tj. napr. pro 98 MHz vrati 980
@@ -299,14 +384,7 @@ void write_freq(uint32_t freq)
 }
 
 
-void switch_init(void)
-{
-	// Nastavit piny pro SW1-SW4 jako vstup s povolenym pull-up rezistorem
-	pinMode(SW1, INPUT_PULLUP);
-	pinMode(SW2, INPUT_PULLUP);
-	pinMode(SW3, INPUT_PULLUP);
-	pinMode(SW4, INPUT_PULLUP);
-}
+
 
 
 
