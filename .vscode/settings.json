@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "mixer.h": "c",
-    "mkl25z4.h": "c"
+    "mkl25z4.h": "c",
+    "potencio.h": "c"
   }
 }

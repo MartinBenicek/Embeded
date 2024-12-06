@@ -31,8 +31,9 @@
  */
 
 #include "MKL25Z4.h"
-#include "RTE_Device.h"
 #include "drv_lcd.h"
+#include "drv_gpio.h"
+#include "RTE_Device.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
 
@@ -42,55 +43,82 @@
 // Kod pro HC08 pouziva 0xC0 protoze adresa je v odesilanem bajtu posunuta vlevo,
 // vyuziva se jen 7 bitu pro adresu, 8. bit je RW.
 
-// *************************************************************
+/*************************************************************/
 //			FreeRTOS
-//SemaphoreHandle_t G_Mutex = NULL;
+SemaphoreHandle_t G_Mutex = NULL;
 // Semafor pouzity pro synchronizaci
 
-// *************************************************************
+/*************************************************************/
 //			Funkce
 uint32_t read_freq(void);
 void write_freq(uint32_t freq);
 void i2c_event(uint32_t event) { }
 void intToStr(int N, char *str);
 void delay(void);
+void switch_init(void);
 void TaskPrint(void * pvParameters);
 
 
-// *************************************************************
+/*************************************************************/
 //			Promenne
 
-
-static int i = 0;
+int update_LCD = 0;
 uint32_t freq;
 char buf[32];
 
 int main(void)
 {
-	uint32_t freq;
 
+	// inicializace semaforu
+	/*
+	G_Mutex = xSemaphoreCreateMutex();
+	xSemaphoreGive(G_Mutex);
+	*/
 
-	Driver_I2C1.Initialize(i2c_event);
-	Driver_I2C1.PowerControl(ARM_POWER_FULL);
-	Driver_I2C1.Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
+	// Inicializace A/D prevodniku (potenciometr) - nepouzito
 
-    delay();
+	/*
+	ADCInit();
 
+	ADCCalibrate();
+	ADCInit();
+
+	SIM->SCGC5 |= SIM_SCGC5_PORTC_MASK;
+	PORTC->PCR[2] = PORT_PCR_MUX(0);
+	*/
+
+	// Inicializace GPIO
+	GPIO_Initialize();
+	switch_init();
+
+	// Inicializace LCD displeje
     LCD_initialize();
     LCD_clear();
-    LCD_puts("FM Prijimac test");
+    LCD_set_cursor(1,1);
+	LCD_puts("FM Prijimac");
     freq = 920;		// 91.7 radio zlin
     write_freq(freq);
 
     delay();
 
-    xTaskCreate(TaskPrint, /* ukazatel na task */
+
+	// Inicializace I2C1 driveru
+	Driver_I2C1.Initialize(i2c_event);
+	Driver_I2C1.PowerControl(ARM_POWER_FULL);
+	Driver_I2C1.Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
+    delay();
+
+    BaseType_t status;
+
+    status = xTaskCreate(TaskPrint, /* ukazatel na task */
         			"Vypis", /* jmeno tasku pro ladeni - kernel awareness debugging */
         			configMINIMAL_STACK_SIZE, /* velikost zasobniku = task stack size */
         			(void*)NULL, /* pripadny parametr pro task = optional task startup argument */
         			tskIDLE_PRIORITY, /* priorita tasku */
         			(xTaskHandle*)NULL /* pripadne handle na task, pokud ma byt vytvoreno */
         		);
+	if ( status != pdPASS)
+		while(1) ; /* error! probably out of memory */
 
     vTaskStartScheduler();
 /*
@@ -133,20 +161,19 @@ int main(void)
 }
 
 void TaskPrint(void * pvParameters){
-	(void) pvParameters; /* parameter not used */
-		for ( ;; ) {
+	for ( ;; ) {
 
-			// Akce se provadi kazdych 600 ms
-			vTaskDelay(600 / portTICK_RATE_MS);
+		// Akce se provadi kazdych 600 ms
+		vTaskDelay(600 / portTICK_RATE_MS);
 
-			LCD_clear();
-			LCD_set_cursor(4,1);
-			LCD_puts("task");
-		    freq = 917;		// 91.7 radio zlin
-		    write_freq(freq);
+		LCD_clear();
+		LCD_set_cursor(4,1);
+		LCD_puts("task");
+		freq = 917;		// 91.7 radio zlin
+		write_freq(freq);
 
-		    delay();
-		}
+		delay();
+	}
 }
 
 void intToStr(int N, char *str) {
@@ -210,18 +237,6 @@ uint32_t read_freq(void)
 	freq=(((((data[0]&0x3F)<<8)+data[1])+1)*32768/4-225000)/100000;
 	return freq;
 
-	/* mbed:
-	frequency = ((buf_temp[0]&0x3f)<<8) | buf_temp[1];
-    return (((((float)frequency*32768)/4)-225000)/1000000);
-
-	/* Arduino:
-	freq_available=(((buffer[0]&0x3F)<<8)+buffer[1])*32768/4-225000;
-		 lcd.print("FM ");
-		 lcd.print((freq_available/1000000));
-	freq=(((((data[0]&0x3F)<<8)+data[1])+1)*32768/4-225000)/100000;
-	return freq;
-	*/
-
 }
 
 
@@ -284,7 +299,14 @@ void write_freq(uint32_t freq)
 }
 
 
-
+void switch_init(void)
+{
+	// Nastavit piny pro SW1-SW4 jako vstup s povolenym pull-up rezistorem
+	pinMode(SW1, INPUT_PULLUP);
+	pinMode(SW2, INPUT_PULLUP);
+	pinMode(SW3, INPUT_PULLUP);
+	pinMode(SW4, INPUT_PULLUP);
+}
 
 
 
