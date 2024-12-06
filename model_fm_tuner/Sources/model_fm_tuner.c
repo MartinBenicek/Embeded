@@ -211,20 +211,28 @@ void print_radio(uint32_t freq) {
 void TaskReadButtons (void* pvParameters){
 	for (;;){
 		if( switch_readw(SW1) == SWITCH_PRESSED ) {
+			xSemaphoreTake(G_Mutex, portMAX_DELAY);
 			freq = 895;		// 89.5 Rock Radio
 			update_LCD = 1;
+			xSemaphoreGive(G_Mutex);
 		}
 		if( switch_readw(SW2) == SWITCH_PRESSED ) {
+			xSemaphoreTake(G_Mutex, portMAX_DELAY);
 			freq = 917;		// 91.7 Radio Zlin
 			update_LCD = 1;
+			xSemaphoreGive(G_Mutex);
 		}
 		if( switch_readw(SW3) == SWITCH_PRESSED ) {
+			xSemaphoreTake(G_Mutex, portMAX_DELAY);
 			freq = 943;		// 94.3 Radio Blanik
 			update_LCD = 1;
+			xSemaphoreGive(G_Mutex);
 		}
 		if( switch_readw(SW4) == SWITCH_PRESSED ) {
+			xSemaphoreTake(G_Mutex, portMAX_DELAY);
 			freq = 975;		// 97.5 Radio Zlin
 			update_LCD = 1;
+			xSemaphoreGive(G_Mutex);
 		}
 
 	}
