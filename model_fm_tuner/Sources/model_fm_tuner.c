@@ -125,6 +125,17 @@ int main(void)
         		);
 	if ( status != pdPASS)
 		while(1) ; /* error! probably out of memory */
+	
+	status = xTaskCreate(TaskReadButtons, /* ukazatel na task */
+					"ReadButtons", /* jmeno tasku pro ladeni - kernel awareness debugging */
+					configMINIMAL_STACK_SIZE +500, /* velikost zasobniku = task stack size */
+					(void*)NULL, /* pripadny parametr pro task = optional task startup argument */
+					tskIDLE_PRIORITY + 1 , /* priorita tasku */
+					(xTaskHandle*)NULL /* pripadne handle na task, pokud ma byt vytvoreno */
+				);
+	if ( status != pdPASS)
+		while(1) ; /* error! probably out of memory */
+
 
     vTaskStartScheduler();
 /*
